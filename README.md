@@ -1,6 +1,6 @@
 # Blink ⚡
 
-A minimal, keyboard-driven application launcher for macOS. Designed for integation with yabai and skhd.
+A minimal, keyboard-driven application launcher for macOS. Designed for integation with [yabai](https://github.com/asmvik/yabai) and [skhd](https://github.com/asmvik/skhd).
 
 ![macOS](https://img.shields.io/badge/macOS-13.0+-blue)
 ![Swift](https://img.shields.io/badge/Swift-5.9-orange)
@@ -18,7 +18,7 @@ A minimal, keyboard-driven application launcher for macOS. Designed for integati
 
 ### Quick Install
 
-1. Download `Blink.app` from [Releases](https://github.com/yourusername/blink/releases)
+1. Download `Blink.app` from [Releases](https://github.com/jpcerone/Blink/releases)
 2. Drag to `/Applications`
 3. Add to your skhd config (see below)
 
@@ -181,4 +181,4 @@ Inspired by [Alfred](https://www.alfredapp.com/), [Raycast](https://www.raycast.
 
 ---
 
-**[⬇️ Download Latest Release](https://github.com/yourusername/blink/releases)** | **[🐛 Report Bug](https://github.com/yourusername/blink/issues)** | **[💡 Request Feature](https://github.com/yourusername/blink/issues)**
+**[⬇️ Download Latest Release](https://github.com/jpcerone/Blink/releases)** | **[🐛 Report Bug](https://github.com/jpcerone/Blink/issues)** | **[💡 Request Feature](https://github.com/jpcerone/Blink/issues)**

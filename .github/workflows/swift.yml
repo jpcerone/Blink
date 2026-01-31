@@ -17,6 +17,8 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build
+      working-directory: ./Blink
       run: swift build -v
     - name: Run tests
+      working-directory: ./Blink
       run: swift test -v

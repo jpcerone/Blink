@@ -3,9 +3,10 @@ import AppKit
 import Combine
 
 struct Application: Identifiable {
-    var id: String { path } // Use path as stable ID
+    var id: String { path }
     let name: String
     let path: String
+    let bundleIdentifier: String?
     let icon: NSImage?
     let isCLI: Bool
 }
@@ -19,62 +20,94 @@ class LauncherViewModel: ObservableObject {
     @Published var allApps: [Application] = []
     @Published var filteredApps: [Application] = []
     @Published var selectedIndex = 0
-    @AppStorage("terminalApp") var terminalApp = "Terminal"
+    
+    private var config: BlinkConfig
+    private var singleInstanceApps: Set<String>
     
     init() {
-        // No timer needed - updates happen immediately via didSet
+        config = ConfigManager.shared.loadConfig()
+        singleInstanceApps = CacheManager.shared.loadSingleInstanceApps()
     }
     
     func scanApplications() {
         var apps: [Application] = []
         
-        // Hardcode Finder (it's in a weird location)
-        let finderPath = "/System/Library/CoreServices/Finder.app"
-        if FileManager.default.fileExists(atPath: finderPath) {
-            let finderIcon = NSWorkspace.shared.icon(forFile: finderPath)
-            apps.append(Application(name: "Finder", path: finderPath, icon: finderIcon, isCLI: false))
+        // Add custom apps from config first (highest priority)
+        for customApp in config.customApps {
+            let expandedPath = ConfigManager.shared.expandPath(customApp.path)
+            if FileManager.default.fileExists(atPath: expandedPath) {
+                let bundleId = getBundleIdentifier(forAppPath: expandedPath)
+                let icon = NSWorkspace.shared.icon(forFile: expandedPath)
+                apps.append(Application(
+                    name: customApp.name,
+                    path: expandedPath,
+                    bundleIdentifier: bundleId,
+                    icon: icon,
+                    isCLI: false
+                ))
+            }
         }
         
-        // Scan /Applications
-        apps.append(contentsOf: scanDirectory("/Applications"))
+        // Use Launch Services to get ALL installed applications
+        apps.append(contentsOf: getAllInstalledApplications())
         
-        // Scan /System/Applications (includes system apps)
-        apps.append(contentsOf: scanDirectory("/System/Applications"))
-        
-        // Scan ~/Applications
-        if let homeDir = FileManager.default.homeDirectoryForCurrentUser.path as String? {
-            apps.append(contentsOf: scanDirectory("\(homeDir)/Applications"))
-        }
-        
-        // Sort by name
-        allApps = apps.sorted { $0.name.lowercased() < $1.name.lowercased() }
-        
-        // Debug logging
-        print("✅ Scanned \(allApps.count) GUI applications")
+        // Remove duplicates (prefer first occurrence - custom apps have priority)
+        var seenPaths = Set<String>()
+        allApps = apps.filter { app in
+            if seenPaths.contains(app.path) {
+                return false
+            }
+            seenPaths.insert(app.path)
+            return true
+        }.sorted { $0.name.lowercased() < $1.name.lowercased() }
         
         updateFilteredApps()
     }
     
-    func scanDirectory(_ path: String) -> [Application] {
+    private func getAllInstalledApplications() -> [Application] {
         var apps: [Application] = []
-        let fileManager = FileManager.default
         
-        guard let contents = try? fileManager.contentsOfDirectory(atPath: path) else {
-            return apps
-        }
+        // Use MDQuery (Spotlight) to find all applications - this is what Spotlight uses
+        let query = MDQueryCreate(kCFAllocatorDefault, "kMDItemContentType == 'com.apple.application-bundle'" as CFString, nil, nil)
+        MDQueryExecute(query, CFOptionFlags(kMDQuerySynchronous.rawValue))
         
-        for item in contents {
-            let fullPath = "\(path)/\(item)"
-            
-            // Check if it's an app bundle
-            if item.hasSuffix(".app") {
-                let appName = item.replacingOccurrences(of: ".app", with: "")
-                let icon = NSWorkspace.shared.icon(forFile: fullPath)
-                apps.append(Application(name: appName, path: fullPath, icon: icon, isCLI: false))
+        let resultCount = MDQueryGetResultCount(query)
+        
+        for i in 0..<resultCount {
+            if let rawPointer = MDQueryGetResultAtIndex(query, i) {
+                let item = Unmanaged<MDItem>.fromOpaque(rawPointer).takeUnretainedValue()
+                
+                if let path = MDItemCopyAttribute(item, kMDItemPath) as? String {
+                    let url = URL(fileURLWithPath: path)
+                    if let appInfo = getApplicationInfo(for: url) {
+                        apps.append(appInfo)
+                    }
+                }
             }
         }
         
         return apps
+    }
+    
+    private func getApplicationInfo(for url: URL) -> Application? {
+        guard let bundle = Bundle(url: url) else { return nil }
+        
+        // Get app name - prefer CFBundleDisplayName, fall back to CFBundleName, then filename
+        let name = (bundle.infoDictionary?["CFBundleDisplayName"] as? String)
+                ?? (bundle.infoDictionary?["CFBundleName"] as? String)
+                ?? url.deletingPathExtension().lastPathComponent
+        
+        let bundleId = bundle.bundleIdentifier
+        let path = url.path
+        let icon = NSWorkspace.shared.icon(forFile: path)
+        
+        return Application(
+            name: name,
+            path: path,
+            bundleIdentifier: bundleId,
+            icon: icon,
+            isCLI: false
+        )
     }
     
     func updateFilteredApps() {
@@ -87,15 +120,8 @@ class LauncherViewModel: ObservableObject {
             } else {
                 self.filteredApps = self.fuzzySearch(query: self.searchText, in: self.allApps)
                 self.selectedIndex = 0
-                
-                // Debug: print first 5 results
-                print("🔍 Search: '\(self.searchText)' -> \(self.filteredApps.count) results")
-                for (i, app) in self.filteredApps.prefix(5).enumerated() {
-                    print("   \(i): \(app.name)")
-                }
             }
             
-            // Force UI update
             self.objectWillChange.send()
         }
     }
@@ -103,26 +129,21 @@ class LauncherViewModel: ObservableObject {
     func fuzzySearch(query: String, in apps: [Application]) -> [Application] {
         let query = query.lowercased()
         
-        // Score each app and sort by relevance
         let scored = apps.compactMap { app -> (app: Application, score: Int)? in
             let name = app.name.lowercased()
             
-            // Exact match gets highest score
             if name == query {
                 return (app, 1000)
             }
             
-            // Starts with query gets high score
             if name.hasPrefix(query) {
                 return (app, 900)
             }
             
-            // Contains query gets medium score
             if name.contains(query) {
                 return (app, 500)
             }
             
-            // Fuzzy match
             let fuzzyScore = calculateFuzzyScore(query: query, target: name)
             if fuzzyScore > 0 {
                 return (app, fuzzyScore)
@@ -155,7 +176,6 @@ class LauncherViewModel: ObservableObject {
             targetIndex = target.index(after: targetIndex)
         }
         
-        // Return score only if all query characters were matched
         return queryIndex == query.endIndex ? score : 0
     }
     
@@ -182,12 +202,27 @@ class LauncherViewModel: ObservableObject {
     func launchGUIApp(_ app: Application) {
         let task = Process()
         task.launchPath = "/usr/bin/open"
-        task.arguments = ["-n", "-a", app.path]
+        
+        // Default: use -n flag (open new instance)
+        // Only skip -n for apps in the single-instance list
+        if singleInstanceApps.contains(app.name) {
+            task.arguments = ["-a", app.path]
+        } else {
+            task.arguments = ["-n", "-a", app.path]
+        }
         
         do {
             try task.run()
         } catch {
-            print("Failed to launch app: \(error)")
+            // Silently fail - user will notice if app doesn't launch
         }
+    }
+    
+    private func getBundleIdentifier(forAppPath appPath: String) -> String? {
+        let bundleURL = URL(fileURLWithPath: appPath)
+        if let bundle = Bundle(url: bundleURL) {
+            return bundle.bundleIdentifier
+        }
+        return nil
     }
 }

@@ -15,6 +15,8 @@ class BlinkWindow: NSWindow {
 class LauncherWindow {
     var window: BlinkWindow?
     var hostingController: NSHostingController<LauncherView>?
+    let windowWidth = 600
+    let windowHeight = 400
     
     init() {
         let launcherView = LauncherView(
@@ -34,7 +36,7 @@ class LauncherWindow {
         hostingController = NSHostingController(rootView: launcherView)
         
         window = BlinkWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
+            contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
             styleMask: [.borderless, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -54,28 +56,33 @@ class LauncherWindow {
         // Center window on screen
         if let screen = NSScreen.main {
             let screenRect = screen.visibleFrame
-            let windowRect = window.frame
-            let x = screenRect.midX - windowRect.width / 2
-            let y = screenRect.midY - windowRect.height / 2 + 100
+            let x = screenRect.midX - (CGFloat)(windowWidth / 2)
+            let y = screenRect.midY - (CGFloat)(windowHeight / 2) + 200
             window.setFrameOrigin(NSPoint(x: x, y: y))
         }
         
-        // More aggressive window activation
+        // Very aggressive window activation
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
         
         // Force the window to be key and make the text field first responder
         DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
             window.makeKey()
             
             // Find and focus the text field
             self.focusTextField(in: window.contentView)
         }
         
-        // Reset search
-        if let launcherView = hostingController?.rootView {
-            launcherView.resetSearch()
+        // Additional focus attempt after a brief delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKey()
+            self.focusTextField(in: window.contentView)
         }
+        
+        // Note: resetSearch is handled in LauncherView.onAppear
     }
     
     private func focusTextField(in view: NSView?) {
@@ -161,16 +168,13 @@ struct LauncherView: View {
         }
         .background(
             VisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
-                .cornerRadius(12)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
         )
         .shadow(color: Color.black.opacity(0.3), radius: 20, x: 0, y: 10)
         .frame(width: 600, height: 400)
         .onAppear {
             viewModel.scanApplications()
+            viewModel.searchText = ""
+            viewModel.selectedIndex = 0
             isSearchFocused = true
             
             // Set up local key monitoring for arrow keys
@@ -234,16 +238,9 @@ struct AppRow: View {
                 Text(app.name)
                     .font(.system(size: 14))
                     .foregroundColor(.primary)
-                
-                if app.isCLI {
-                    Text("CLI · \(app.path)")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                } else {
-                    Text(app.path)
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                }
+                Text(app.path)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
             }
             
             Spacer()

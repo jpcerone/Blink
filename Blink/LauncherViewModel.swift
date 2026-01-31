@@ -59,7 +59,7 @@ class LauncherViewModel: ObservableObject {
             }
             seenPaths.insert(app.path)
             return true
-        }.sorted { $0.name.lowercased() < $1.name.lowercased() }
+        }.sorted { $0.path.lowercased() < $1.path.lowercased() }
         
         updateFilteredApps()
     }
@@ -80,7 +80,9 @@ class LauncherViewModel: ObservableObject {
                 if let path = MDItemCopyAttribute(item, kMDItemPath) as? String {
                     let url = URL(fileURLWithPath: path)
                     if let appInfo = getApplicationInfo(for: url) {
-                        apps.append(appInfo)
+                        if(appInfo.name != ""){
+                            apps.append(appInfo)
+                        }
                     }
                 }
             }

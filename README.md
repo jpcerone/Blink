@@ -1,6 +1,6 @@
 # Blink ⚡
 
-A minimal, keyboard-driven application launcher for macOS. Designed for speed and simplicity.
+A minimal, keyboard-driven application launcher for macOS. Designed for integation with yabai and skhd.
 
 ![macOS](https://img.shields.io/badge/macOS-13.0+-blue)
 ![Swift](https://img.shields.io/badge/Swift-5.9-orange)

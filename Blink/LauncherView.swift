@@ -236,7 +236,7 @@ struct AppRow: View {
                     .resizable()
                     .frame(width: 32, height: 32)
             } else {
-                Image(systemName: app.isCLI ? "terminal.fill" : "app.fill")
+                Image(systemName: "app.fill")
                     .font(.system(size: 24))
                     .foregroundColor(.secondary)
                     .frame(width: 32, height: 32)

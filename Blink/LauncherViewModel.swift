@@ -208,9 +208,9 @@ class LauncherViewModel: ObservableObject {
         // Default: use -n flag (open new instance)
         // Only skip -n for apps in the single-instance list
         if singleInstanceApps.contains(app.name) {
-            task.arguments = ["-a", app.path]
+            task.arguments = ["-a", app.name]
         } else {
-            task.arguments = ["-n", "-a", app.path]
+            task.arguments = ["-n", "-a", app.name]
         }
         
         do {

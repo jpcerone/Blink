@@ -12,11 +12,12 @@ When you use Spotlight to open an app that's already running, it **switches you 
 
 Blink fixes this. Inspired by [Hyprland](https://hyprland.org/) + [Walker](https://github.com/abenz1267/walker) on Linux, Blink **launches applications in your current desktop** by default, opening new windows instead of switching contexts.
 
+![blinkdemo](https://i.imgur.com/ysEg5qm.gif)
+
 ## Why Blink?
 
 - **Launch, don't switch**: Opens new app instances in your current desktop
 - **Tiling WM native**: Designed for yabai, Amethyst, and similar setups
-- **Instant**: Sub-100ms launch time, quits immediately after use
 - **Keyboard-first**: No mouse required
 - **Configurable**: Aliases, exclusions, and custom shortcuts
 - **Smart search**: Fuzzy matching finds what you need

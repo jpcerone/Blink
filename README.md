@@ -1,16 +1,23 @@
 # Blink Launcher
 
-A minimal, keyboard-driven application launcher for macOS. Designed for integration with [yabai](https://github.com/koekeishiya/yabai) and [skhd](https://github.com/koekeishiya/skhd).
+A minimal, keyboard-driven application launcher for macOS. Built for tiling window manager workflows with [yabai](https://github.com/koekeishiya/yabai) and [skhd](https://github.com/koekeishiya/skhd).
 
 ![macOS](https://img.shields.io/badge/macOS-13.0+-blue)
 ![Swift](https://img.shields.io/badge/Swift-5.9-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
+## The Problem with Spotlight
+
+When you use Spotlight to open an app that's already running, it **switches you to the existing window** on another desktop. This breaks tiling window manager workflows where you want to spawn a new instance in your current workspace.
+
+Blink fixes this. Inspired by [Hyprland](https://hyprland.org/) + [Walker](https://github.com/abenz1267/walker) on Linux, Blink **launches applications in your current desktop** by default, opening new windows instead of switching contexts.
+
 ## Why Blink?
 
-- **Instant**: Sub-100ms launch time
+- **Launch, don't switch**: Opens new app instances in your current desktop
+- **Tiling WM native**: Designed for yabai, Amethyst, and similar setups
+- **Instant**: Sub-100ms launch time, quits immediately after use
 - **Keyboard-first**: No mouse required
-- **Zero overhead**: Quits immediately after launching
 - **Configurable**: Aliases, exclusions, and custom shortcuts
 - **Smart search**: Fuzzy matching finds what you need
 
@@ -126,9 +133,11 @@ Blink uses Spotlight (MDQuery) to find all installed applications, plus any cust
 
 ### Smart Launching
 
-- **Multi-instance apps**: Opens new window with `-n` flag
-- **Single-instance apps**: Activates existing instance
-- Configurable via `single-instance-apps.config` or `Cmd + S`
+Unlike Spotlight, Blink defaults to **launching new instances** so apps open in your current desktop:
+
+- **Default behavior**: Opens new window with `-n` flag (stays in current desktop)
+- **Single-instance apps**: Apps like Finder that can't have multiple instances activate the existing window
+- Configure exceptions via `single-instance-apps.config` or press `Cmd + S` on any app
 
 ### Search Algorithm
 

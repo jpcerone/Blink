@@ -1,6 +1,6 @@
-# BlinkLauncher ⚡
+# Blink Launcher
 
-A minimal, keyboard-driven application launcher for macOS. Designed for integation with [yabai](https://github.com/asmvik/yabai) and [skhd](https://github.com/asmvik/skhd).
+A minimal, keyboard-driven application launcher for macOS. Designed for integration with [yabai](https://github.com/koekeishiya/yabai) and [skhd](https://github.com/koekeishiya/skhd).
 
 ![macOS](https://img.shields.io/badge/macOS-13.0+-blue)
 ![Swift](https://img.shields.io/badge/Swift-5.9-orange)
@@ -10,25 +10,30 @@ A minimal, keyboard-driven application launcher for macOS. Designed for integati
 
 - **Instant**: Sub-100ms launch time
 - **Keyboard-first**: No mouse required
-- **Zero overhead**: Quits immediately after use
-- **skhd integration**: Works with your existing hotkey setup
+- **Zero overhead**: Quits immediately after launching
+- **Configurable**: Aliases, exclusions, and custom shortcuts
 - **Smart search**: Fuzzy matching finds what you need
 
 ## Installation
 
-### Quick Install
+### Homebrew (Recommended)
 
-1. Download `Blink.app` from [Releases](https://github.com/jpcerone/Blink/releases)
-2. Drag to `/Applications`
-3. Add to your skhd config (see below)
+```bash
+brew tap jpcerone/blink
+brew install --cask blink-launcher
+```
+
+### Manual Install
+
+1. Download `Blink.zip` from [Releases](https://github.com/jpcerone/BlinkLauncher/releases)
+2. Extract and drag `Blink.app` to `/Applications`
 
 ### Build from Source
 
 ```bash
-git clone https://github.com/yourusername/blink
-cd blink
+git clone https://github.com/jpcerone/BlinkLauncher
+cd BlinkLauncher
 xcodebuild -scheme Blink -configuration Release
-cp -r build/Release/Blink.app /Applications/
 ```
 
 ## Setup
@@ -46,74 +51,100 @@ skhd --reload
 
 ## Usage
 
-1. Press your hotkey (e.g., `⌥ Space`)
+1. Press your hotkey (e.g., `Option + Space`)
 2. Type to search
-3. `↑` `↓` to navigate
+3. `Up/Down` to navigate
 4. `Enter` to launch
-5. `Esc` to cancel
+5. `Escape` to cancel
 
-That's it.
+### Keyboard Shortcuts
+
+While Blink is open:
+
+| Shortcut | Action |
+|----------|--------|
+| `Cmd + ,` | Open config file |
+| `Cmd + R` | Rescan applications |
+| `Cmd + S` | Mark selected app as single-instance |
 
 ## Configuration
 
-Blink creates config files at `~/.config/blink/`:
+Config files are located at `~/.config/blink/`.
 
-### `blink.config`
+### blink.config
 
 ```toml
-# Add custom applications
+# Custom applications in non-standard locations
 [[custom_apps]]
 name = "My Script"
-path = "/Users/you/scripts/deploy.sh"
-]
+path = "~/scripts/deploy.app"
+
+# Search aliases - type shortcuts to find apps faster
+# App name must match exactly as shown in Blink
+[[aliases]]
+app = "Code"
+shortcuts = ["vsc", "vscode", "editor"]
+
+[[aliases]]
+app = "Google Chrome"
+shortcuts = ["chrome", "browser", "gc"]
+
+# Hide apps from search results
+exclude_apps = ["Migration Assistant", "Boot Camp Assistant"]
+
+# Pattern-based exclusions (supports * wildcard)
+exclude_patterns = ["*Helper*", "*Uninstaller*"]
+
+# Keyboard shortcuts (modifier+key)
+[shortcuts]
+preferences = "cmd+,"
+refresh = "cmd+r"
+mark_single_instance = "cmd+s"
+
+# Launch behavior
+always_new_window = false    # Always open new instances
+close_on_blur = true         # Quit when window loses focus
+quit_after_launch = true     # Quit after launching an app
 ```
 
-### `single-instance-apps.config`
+### single-instance-apps.config
 
-Controls single vs multi-instance launching:
+Apps listed here activate existing windows instead of opening new ones:
 
 ```
-# Blink Single-Instance Apps
-# If nothing is happening when selecting a specific app, try adding to this list.
-# Apps listed here will NOT use the -n flag when launched
-# This means they'll activate existing windows instead of opening new ones
-#
-# Add one app name per line (case-sensitive, must match exactly)
 # Lines starting with # are comments
-
 Finder
 System Settings
-System Preferences
 Activity Monitor
 ```
+
 ## How It Works
 
 ### App Discovery
 
-Scans:
-- `/Applications`
-- `/System/Applications`  
-- `~/Applications`
-- `/System/Library/CoreServices` (Finder, etc.)
-- Custom paths from config
+Blink uses Spotlight (MDQuery) to find all installed applications, plus any custom apps defined in your config.
 
 ### Smart Launching
 
-- **Multi-instance apps** (browsers, editors): Opens new window with `-n` flag
-- **Single-instance apps** (Finder, Mail): Activates existing instance
-- **Custom apps**: Respects your cache.json preferences
+- **Multi-instance apps**: Opens new window with `-n` flag
+- **Single-instance apps**: Activates existing instance
+- Configurable via `single-instance-apps.config` or `Cmd + S`
 
 ### Search Algorithm
 
-1. Exact match (1000 pts)
-2. Starts with query (900 pts)
-3. Contains query (500 pts)
-4. Fuzzy match (variable)
+| Match Type | Score |
+|------------|-------|
+| Exact match | 1000 |
+| Alias match | 950 |
+| Starts with query | 900 |
+| Partial alias match | 850 |
+| Contains query | 500 |
+| Fuzzy match | Variable |
 
 ## Requirements
 
 - macOS 13.0+ (Ventura or later)
-- [skhd](https://github.com/koekeishiya/skhd) (recommended)
+- [skhd](https://github.com/koekeishiya/skhd) (recommended for hotkey binding)
 
 ## Troubleshooting
 
@@ -122,24 +153,22 @@ Scans:
 - Check skhd is running: `brew services list`
 
 **Missing apps**
-- Add to `scan_paths` in `~/.config/blink/blink.config`
-- Or add as `custom_apps`
+- Press `Cmd + R` to rescan
+- Or add as `[[custom_apps]]` in config
 
 **Wrong window behavior**
-- Update `~/.config/blink/cache.json`
-- Add app to `singleInstanceApps` or `multiInstanceApps`
+- Add app name to `~/.config/blink/single-instance-apps.config`
+- Or select the app and press `Cmd + S`
+
+**Alias not working**
+- App name must match exactly as shown in Blink's search results
+- Check with `Cmd + R` to refresh after config changes
 
 ## Development
 
 ```bash
-# Clone
-git clone https://github.com/yourusername/blink
-
-# Open in Xcode
+git clone https://github.com/jpcerone/BlinkLauncher
 open Blink.xcodeproj
-
-# Build
-⌘B
 ```
 
 ### Project Structure
@@ -147,38 +176,16 @@ open Blink.xcodeproj
 ```
 Blink/
 ├── BlinkApp.swift           # App lifecycle
-├── LauncherView.swift       # UI components
-├── LauncherViewModel.swift  # Search & launch logic
+├── LauncherView.swift       # UI and keyboard handling
+├── LauncherViewModel.swift  # Search, filtering, and launch logic
 ├── ConfigManager.swift      # Config file parsing
-└── CacheManager.swift       # Instance cache
+└── CacheManager.swift       # Single-instance app management
 ```
-
-## Contributing
-
-Contributions welcome! Please:
-- Keep changes focused
-- Test on macOS 13+
-- Follow existing code style
-- Update README if needed
-
-## Roadmap
-
-- [ ] Homebrew formula
-- [ ] App icons/branding
-- [ ] Frequency-based ranking
-- [ ] Action shortcuts (⌘K for preferences, etc.)
-- [ ] Plugin system
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details
-
-## Credits
-
-Built with SwiftUI for modern macOS.
-
-Inspired by [Alfred](https://www.alfredapp.com/), [Raycast](https://www.raycast.com/), and the skhd community.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**[⬇️ Download Latest Release](https://github.com/jpcerone/Blink/releases)** | **[🐛 Report Bug](https://github.com/jpcerone/Blink/issues)** | **[💡 Request Feature](https://github.com/jpcerone/Blink/issues)**
+**[Download Latest Release](https://github.com/jpcerone/BlinkLauncher/releases)** | **[Report Bug](https://github.com/jpcerone/BlinkLauncher/issues)** | **[Request Feature](https://github.com/jpcerone/BlinkLauncher/issues)**

@@ -20,18 +20,34 @@ class LauncherViewModel: ObservableObject {
     @Published var allApps: [Application] = []
     @Published var filteredApps: [Application] = []
     @Published var selectedIndex = 0
-    
-    private var config: BlinkConfig
+
+    private(set) var config: BlinkConfig
     private var singleInstanceApps: Set<String>
-    
+    private var aliasLookup: [String: String] = [:] // shortcut -> app name
+
     init() {
         config = ConfigManager.shared.loadConfig()
         singleInstanceApps = CacheManager.shared.loadSingleInstanceApps()
+        buildAliasLookup()
+    }
+
+    private func buildAliasLookup() {
+        aliasLookup = [:]
+        for alias in config.aliases {
+            for shortcut in alias.shortcuts {
+                aliasLookup[shortcut.lowercased()] = alias.app
+            }
+        }
     }
     
     func scanApplications() {
+        // Reload config and single-instance apps
+        config = ConfigManager.shared.loadConfig()
+        singleInstanceApps = CacheManager.shared.loadSingleInstanceApps()
+        buildAliasLookup()
+
         var apps: [Application] = []
-        
+
         // Add custom apps from config first (highest priority)
         for customApp in config.customApps {
             let expandedPath = ConfigManager.shared.expandPath(customApp.path)
@@ -47,20 +63,37 @@ class LauncherViewModel: ObservableObject {
                 ))
             }
         }
-        
+
         // Use Launch Services to get ALL installed applications
         apps.append(contentsOf: getAllInstalledApplications())
-        
+
         // Remove duplicates (prefer first occurrence - custom apps have priority)
         var seenPaths = Set<String>()
-        allApps = apps.filter { app in
+        apps = apps.filter { app in
             if seenPaths.contains(app.path) {
                 return false
             }
             seenPaths.insert(app.path)
             return true
-        }.sorted { $0.path.lowercased() < $1.path.lowercased() }
-        
+        }
+
+        // Apply exclusion filters
+        apps = apps.filter { app in
+            // Check exact name exclusions
+            if config.excludeApps.contains(app.name) {
+                return false
+            }
+            // Check pattern exclusions
+            for pattern in config.excludePatterns {
+                if ConfigManager.shared.matchesPattern(app.name, pattern: pattern) {
+                    return false
+                }
+            }
+            return true
+        }
+
+        allApps = apps.sorted { $0.path.lowercased() < $1.path.lowercased() }
+
         updateFilteredApps()
     }
     
@@ -130,30 +163,46 @@ class LauncherViewModel: ObservableObject {
     
     func fuzzySearch(query: String, in apps: [Application]) -> [Application] {
         let query = query.lowercased()
-        
+
+        // Check if query matches an alias exactly
+        let aliasTargetApp = aliasLookup[query]?.lowercased()
+
         let scored = apps.compactMap { app -> (app: Application, score: Int)? in
             let name = app.name.lowercased()
-            
+
+            // Exact alias match gets very high priority
+            if let targetApp = aliasTargetApp, name == targetApp {
+                return (app, 950)
+            }
+
+            // Check partial alias matches (query is prefix of a shortcut)
+            for (shortcut, targetApp) in aliasLookup {
+                if shortcut.hasPrefix(query) && name == targetApp.lowercased() {
+                    return (app, 850)
+                }
+            }
+
+            // Standard matching
             if name == query {
                 return (app, 1000)
             }
-            
+
             if name.hasPrefix(query) {
                 return (app, 900)
             }
-            
+
             if name.contains(query) {
                 return (app, 500)
             }
-            
+
             let fuzzyScore = calculateFuzzyScore(query: query, target: name)
             if fuzzyScore > 0 {
                 return (app, fuzzyScore)
             }
-            
+
             return nil
         }
-        
+
         return scored
             .sorted { $0.score > $1.score }
             .map { $0.app }
@@ -204,15 +253,26 @@ class LauncherViewModel: ObservableObject {
     func launchGUIApp(_ app: Application) {
         let task = Process()
         task.launchPath = "/usr/bin/open"
-        
-        // Default: use -n flag (open new instance)
-        // Only skip -n for apps in the single-instance list
+
+        // Determine whether to open new instance
+        let useNewInstance: Bool
         if singleInstanceApps.contains(app.name) {
-            task.arguments = ["-a", app.name]
+            // Single-instance apps never get -n flag
+            useNewInstance = false
+        } else if config.alwaysNewWindow {
+            // Global override: always open new instances
+            useNewInstance = true
         } else {
-            task.arguments = ["-n", "-a", app.name]
+            // Default behavior: open new instances
+            useNewInstance = true
         }
-        
+
+        if useNewInstance {
+            task.arguments = ["-n", "-a", app.name]
+        } else {
+            task.arguments = ["-a", app.name]
+        }
+
         do {
             try task.run()
         } catch {
@@ -226,5 +286,13 @@ class LauncherViewModel: ObservableObject {
             return bundle.bundleIdentifier
         }
         return nil
+    }
+
+    func markSelectedAsSingleInstance() {
+        guard selectedIndex < filteredApps.count else { return }
+        let app = filteredApps[selectedIndex]
+        CacheManager.shared.addSingleInstanceApp(app.name)
+        // Reload the set so it takes effect immediately
+        singleInstanceApps = CacheManager.shared.loadSingleInstanceApps()
     }
 }

@@ -78,4 +78,35 @@ class CacheManager {
             "Activity Monitor"
         ])
     }
+
+    func addSingleInstanceApp(_ name: String) {
+        // Read current contents
+        var apps = loadSingleInstanceApps()
+
+        // Check if already present
+        if apps.contains(name) {
+            logger.info("App '\(name)' is already in single-instance list")
+            return
+        }
+
+        // Add to set
+        apps.insert(name)
+
+        // Read file to preserve comments
+        var contents = (try? String(contentsOf: cacheFile, encoding: .utf8)) ?? ""
+
+        // Append the new app name
+        if !contents.hasSuffix("\n") {
+            contents += "\n"
+        }
+        contents += name + "\n"
+
+        // Write back
+        do {
+            try contents.write(to: cacheFile, atomically: true, encoding: .utf8)
+            logger.info("Added '\(name)' to single-instance apps")
+        } catch {
+            logger.error("Failed to add single-instance app: \(error.localizedDescription)")
+        }
+    }
 }

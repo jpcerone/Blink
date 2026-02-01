@@ -1,12 +1,54 @@
 import SwiftUI
 import AppKit
 
+// Keyboard shortcut parser
+struct KeyboardShortcutParser {
+    struct ParsedShortcut {
+        let modifiers: NSEvent.ModifierFlags
+        let keyCode: UInt16
+    }
+
+    static func parse(_ shortcut: String) -> ParsedShortcut? {
+        let parts = shortcut.lowercased().components(separatedBy: "+")
+        var modifiers: NSEvent.ModifierFlags = []
+        var key: String = ""
+
+        for part in parts {
+            let trimmed = part.trimmingCharacters(in: .whitespaces)
+            switch trimmed {
+            case "cmd", "command": modifiers.insert(.command)
+            case "shift": modifiers.insert(.shift)
+            case "alt", "option": modifiers.insert(.option)
+            case "ctrl", "control": modifiers.insert(.control)
+            default: key = trimmed
+            }
+        }
+
+        guard let keyCode = keyCodeFor(key) else { return nil }
+        return ParsedShortcut(modifiers: modifiers, keyCode: keyCode)
+    }
+
+    private static func keyCodeFor(_ key: String) -> UInt16? {
+        let keyMap: [String: UInt16] = [
+            ",": 43, ".": 47, "/": 44,
+            "a": 0, "b": 11, "c": 8, "d": 2, "e": 14, "f": 3,
+            "g": 5, "h": 4, "i": 34, "j": 38, "k": 40, "l": 37,
+            "m": 46, "n": 45, "o": 31, "p": 35, "q": 12, "r": 15,
+            "s": 1, "t": 17, "u": 32, "v": 9, "w": 13, "x": 7,
+            "y": 16, "z": 6,
+            "1": 18, "2": 19, "3": 20, "4": 21, "5": 23,
+            "6": 22, "7": 26, "8": 28, "9": 25, "0": 29,
+        ]
+        return keyMap[key]
+    }
+}
+
 // Custom window class that allows borderless windows to become key and accept input
 class BlinkWindow: NSWindow {
     override var canBecomeKey: Bool {
         return true
     }
-    
+
     override var canBecomeMain: Bool {
         return true
     }
@@ -17,8 +59,11 @@ class LauncherWindow {
     var hostingController: NSHostingController<LauncherView>?
     let windowWidth = 600
     let windowHeight = 400
-    
+    private var blurObserver: NSObjectProtocol?
+
     init() {
+        let config = ConfigManager.shared.loadConfig()
+
         let launcherView = LauncherView(
             closeWindow: { [weak self] in
                 self?.hideWindow()
@@ -28,26 +73,46 @@ class LauncherWindow {
                 self?.hideWindow()
                 // Small delay to ensure app launches before we quit
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    NSApp.terminate(nil)
+                    if config.quitAfterLaunch {
+                        NSApp.terminate(nil)
+                    }
                 }
             }
         )
-        
+
         hostingController = NSHostingController(rootView: launcherView)
-        
+
         window = BlinkWindow(
             contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
             styleMask: [.borderless, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
-        
+
         window?.contentViewController = hostingController
         window?.isOpaque = false
         window?.backgroundColor = .clear
         window?.level = .floating
         window?.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window?.isMovableByWindowBackground = true
+
+        // Close on blur if configured
+        if config.closeOnBlur {
+            blurObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResignKeyNotification,
+                object: window,
+                queue: .main
+            ) { [weak self] _ in
+                self?.hideWindow()
+                NSApp.terminate(nil)
+            }
+        }
+    }
+
+    deinit {
+        if let observer = blurObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
     
     func showWindow() {
@@ -184,13 +249,41 @@ struct LauncherView: View {
             viewModel.searchText = ""
             viewModel.selectedIndex = 0
             isSearchFocused = true
-            
-            // Set up local key monitoring for arrow keys
+
+            // Parse configured shortcuts
+            let config = viewModel.config
+            let prefShortcut = KeyboardShortcutParser.parse(config.shortcuts.preferences ?? "")
+            let refreshShortcut = KeyboardShortcutParser.parse(config.shortcuts.refresh ?? "")
+            let markShortcut = KeyboardShortcutParser.parse(config.shortcuts.markSingleInstance ?? "")
+
+            // Set up local key monitoring
             NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+                // Check custom shortcuts first
+                if let shortcut = prefShortcut,
+                   modifiers == shortcut.modifiers && event.keyCode == shortcut.keyCode {
+                    NSWorkspace.shared.open(ConfigManager.shared.getConfigFilePath())
+                    return nil
+                }
+
+                if let shortcut = refreshShortcut,
+                   modifiers == shortcut.modifiers && event.keyCode == shortcut.keyCode {
+                    self.viewModel.scanApplications()
+                    return nil
+                }
+
+                if let shortcut = markShortcut,
+                   modifiers == shortcut.modifiers && event.keyCode == shortcut.keyCode {
+                    self.viewModel.markSelectedAsSingleInstance()
+                    return nil
+                }
+
+                // Arrow keys and escape
                 switch Int(event.keyCode) {
                 case 126: // Up arrow
                     self.viewModel.moveSelectionUp()
-                    if let proxy = self.scrollProxy, 
+                    if let proxy = self.scrollProxy,
                        self.viewModel.selectedIndex < self.viewModel.filteredApps.count {
                         let app = self.viewModel.filteredApps[self.viewModel.selectedIndex]
                         withAnimation(.easeInOut(duration: 0.1)) {
